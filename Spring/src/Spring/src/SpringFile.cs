@@ -86,8 +86,22 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
     public class SpringIdentDecl : CompositeElement, IDeclaration
     {
-        private TreeTextRange IdentRange =>
-            this.Children().Single(node => node.NodeType == SpringTokenType.IDENT).GetTreeTextRange();
+        private TreeTextRange IdentRange
+        {
+            get
+            {
+                foreach (var child in this.Children())
+                {
+                    if (child.NodeType == SpringTokenType.IDENT)
+                    {
+                        return child.GetTreeTextRange();
+                    }
+                    
+                }
+                return TreeTextRange.InvalidRange;
+            }
+        }
+        
 
         public override NodeType NodeType => SpringCompositeNodeType.IDENT_DECL;
 
@@ -150,6 +164,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
         public DeclaredElementType GetElementType()
         {
+            // why not?
             return CLRDeclaredElementType.FIELD;
         }
 
@@ -190,8 +205,22 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
     public class SpringIdent : CompositeElement
     {
-        public TreeTextRange IdentRange =>
-            this.Children().Single(node => node.NodeType == SpringTokenType.IDENT).GetTreeTextRange();
+        public TreeTextRange IdentRange
+        {
+            get
+            {
+                foreach (var child in this.Children())
+                {
+                    if (child.NodeType == SpringTokenType.IDENT)
+                    {
+                        return child.GetTreeTextRange();
+                    }
+                    
+                }
+                return TreeTextRange.InvalidRange;
+            }
+        }
+
 
         public override NodeType NodeType => SpringCompositeNodeType.IDENT;
         public override PsiLanguageType Language => SpringLanguage.Instance;
@@ -213,6 +242,27 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
         public override ResolveResultWithInfo ResolveWithoutCache()
         {
+            /*
+            var parent = _ident.Parent;
+
+            while (parent != null)
+            {
+                foreach (var child in parent.Descendants())
+                {
+                    if (child is SpringIdentDecl decl)
+                    {
+                        if (decl.DeclaredName == GetName())
+                        {
+                            return new ResolveResultWithInfo(new SimpleResolveResult(decl.DeclaredElement),
+                                ResolveErrorType.OK);
+                        }
+
+                    }
+                }
+                parent = parent.Parent;
+            }
+            */
+                
             var file = _ident.GetContainingFile();
             if (file == null)
             {
@@ -225,8 +275,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 {
                     if (declaration.DeclaredName == GetName())
                     {
-                        return new ResolveResultWithInfo(new SimpleResolveResult(declaration.DeclaredElement),
-                            ResolveErrorType.OK);
+                        return new ResolveResultWithInfo(new SimpleResolveResult(declaration.DeclaredElement), ResolveErrorType.OK);
                     }
                 }
             }

@@ -15,5 +15,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Spring\Spring.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="PresentationFramework, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35">
+      <HintPath>..\..\..\..\..\..\..\..\.nuget\packages\presentationframework\4.6.0\lib\PresentationFramework.dll</HintPath>
+    </Reference>
+  </ItemGroup>
   <Import Project="$(DotNetSdkPath)\Build\SubplatformReference.Psi.Features_test_Framework.Props" Condition="Exists('$(DotNetSdkPath)\Build\SubplatformReference.Psi.Features_test_Framework.Props')" />
 </Project>

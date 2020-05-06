@@ -21,6 +21,7 @@ using JetBrains.ReSharper.Psi.Parsing;
 using JetBrains.ReSharper.Psi.Resolve;
 using JetBrains.ReSharper.Psi.Tree;
 using JetBrains.ReSharper.Psi.TreeBuilder;
+using JetBrains.ReSharperAutomationTools.CommandLine.Common.Console.Util;
 using JetBrains.Text;
 using JetBrains.Util.Console;
 
@@ -42,24 +43,18 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 var builder = new PsiBuilder(myLexer, SpringFileNodeType.Instance, new TokenFactory(), def.Lifetime);
                 var fileMark = builder.Mark();
 
-                /*
                 StringBuilder b = new StringBuilder();
                 foreach (var tok in myLexer.Tokens())
                 {
                     b.Append(tok + " ");
                 }
                 builder.Error("F: " + b);
-                */
 
                 ParseDefines(builder);
 
                 builder.Done(fileMark, SpringFileNodeType.Instance, null);
                 var file = (IFile) builder.BuildTree();
-
-                var sb = new StringBuilder();
-                DebugUtil.DumpPsi(new StringWriter(sb), file);
-                sb.ToString();
-
+                
                 return file;
             }
         }
@@ -74,20 +69,19 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 {
                     var start = builder.Mark();
                     AdvanceSkippingWhitespace(builder);
-                    var startBlock = builder.GetTokenType();
-                    if (startBlock == SpringTokenType.DEFINE)
+                    if (builder.GetTokenType() == SpringTokenType.DEFINE)
                     {
                         AdvanceSkippingWhitespace(builder);
                         ParseIdentDecl(builder);
                         SkipWhitespace(builder);
                         ParseExpr(builder);
+                        SkipWhitespace(builder);
                     }
                     else
                     {
                         builder.Error("Expected definition!");
                     }
-
-                    SkipWhitespace(builder);
+                    
                     if (builder.GetTokenType() == SpringTokenType.RPAREN)
                         builder.AdvanceLexer();
                     else
@@ -105,55 +99,64 @@ namespace JetBrains.ReSharper.Plugins.Spring
             }
         }
 
-        private static void ParseIdent(PsiBuilder builder)
+        private static bool ParseIdentDecl(PsiBuilder builder)
         {
-            ParseIdentCommon(builder, SpringCompositeNodeType.IDENT);
+            var start = builder.Mark();
+            var result = ParseIdent(builder);
+            builder.Done(start, SpringCompositeNodeType.IDENT_DECL, null);
+            return result;
         }
 
-        private static void ParseIdentDecl(PsiBuilder builder)
+        private static bool ParseIdent(PsiBuilder builder)
         {
-            ParseIdentCommon(builder, SpringCompositeNodeType.IDENT_DECL);
-        }
-
-        private static void ParseIdentCommon(PsiBuilder builder, SpringCompositeNodeType type)
-        {
+            var lexerAdvanced = false;
             var start = builder.Mark();
             var defineName = builder.GetTokenType();
             if (defineName == SpringTokenType.IDENT)
+            {
+                lexerAdvanced = true;
                 builder.AdvanceLexer();
+            }
             else
                 builder.Error("Expected identifier!");
 
-
-            builder.Done(start, type, null);
+            builder.Done(start, SpringCompositeNodeType.IDENT, null);
+            
+            return lexerAdvanced;
         }
 
-        private void ParseExpr(PsiBuilder builder)
+        private bool ParseExpr(PsiBuilder builder)
         {
+            var lexerAdvanced = false;
             var markExpr = builder.Mark();
             var expr = builder.GetTokenType();
             if (expr == SpringTokenType.LIT)
             {
+                lexerAdvanced = true;
                 var mark = builder.Mark();
                 builder.AdvanceLexer();
                 builder.Done(mark, SpringCompositeNodeType.LIT, null);
             }
             else if (expr == SpringTokenType.IDENT)
             {
+                lexerAdvanced = true;
                 var mark = builder.Mark();
                 builder.AdvanceLexer();
                 builder.Done(mark, SpringCompositeNodeType.IDENT, null);
             }
+            /*
             else if (expr == SpringTokenType.LPAREN)
             {
                 ParseBlock(builder);
             }
+            */
             else
             {
                 builder.Error("Expected an expression!");
             }
 
             builder.Done(markExpr, SpringCompositeNodeType.EXPR, null);
+            return lexerAdvanced;
         }
 
         // Call when you know that the current mark is LPAREN.
@@ -166,7 +169,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
             {
                 var markLambda = builder.Mark();
                 AdvanceSkippingWhitespace(builder);
-                ParseList(builder, ParseIdentDecl);
+                ParseList(builder, x => ParseIdentDecl(x));
                 SkipWhitespace(builder);
                 ParseExpr(builder);
 
@@ -204,7 +207,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
         }
 
         // Left mark after ')'
-        private void ParseList(PsiBuilder builder, Action<PsiBuilder> elementParser)
+        private void ParseList(PsiBuilder builder, Predicate<PsiBuilder> elementParser)
         {
             if (builder.GetTokenType() == SpringTokenType.LPAREN)
             {
@@ -221,12 +224,15 @@ namespace JetBrains.ReSharper.Plugins.Spring
         }
 
         // Left mark on ')'
-        private void ParseSpaceSeparatedList(PsiBuilder builder, Action<PsiBuilder> elementParser)
+        private void ParseSpaceSeparatedList(PsiBuilder builder, Predicate<PsiBuilder> elementParser)
         {
             var mark = builder.Mark();
             while (builder.GetTokenType() != SpringTokenType.RPAREN && !builder.Eof())
             {
-                elementParser(builder);
+                if (!elementParser(builder))
+                {
+                    builder.AdvanceLexer();
+                }
                 SkipWhitespace(builder);
             }
 
