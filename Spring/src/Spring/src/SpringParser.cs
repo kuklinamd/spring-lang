@@ -281,7 +281,8 @@ namespace JetBrains.ReSharper.Plugins.Spring
                     if (treeNode is PsiBuilderErrorElement error)
                     {
                         var range = error.GetDocumentRange();
-                        highlightings.Add(new HighlightingInfo(range,
+                        if (!range.IsEmpty)
+                            highlightings.Add(new HighlightingInfo(range,
                             new CSharpSyntaxError(error.ErrorDescription, range)));
                     }
                     else if (treeNode is SpringIdent refer)
@@ -292,8 +293,9 @@ namespace JetBrains.ReSharper.Plugins.Spring
                             if (reff.Resolve().Info.ResolveErrorType != ResolveErrorType.OK)
                             {
                                 var rangeR = reff.GetDocumentRange();
-                                highlightings.Add(new HighlightingInfo(rangeR,
-                                    new CSharpSyntaxError("Symbol cannot be resolved", rangeR)));
+                                if (!rangeR.IsEmpty)
+                                    highlightings.Add(new HighlightingInfo(rangeR,
+                                        new CSharpSyntaxError("Symbol cannot be resolved", rangeR)));
                             }
                         }
                     }
@@ -304,18 +306,6 @@ namespace JetBrains.ReSharper.Plugins.Spring
             }
 
             public IDaemonProcess DaemonProcess { get; }
-
-            [StaticSeverityHighlighting(Severity.ERROR, "CSharpErrors", OverlapResolve = OverlapResolveKind.WARNING)]
-            public class CSharpSyntaxErrorMod : SyntaxErrorBase, IHighlightingWithNavigationOffset, IHighlighting
-            {
-                public int NavigationOffset { get; }
-
-                public CSharpSyntaxErrorMod(string toolTip, DocumentRange range, int navigationOffset = 0)
-                    : base(toolTip, range)
-                {
-                    this.NavigationOffset = navigationOffset;
-                }
-            }
         }
 
         protected override IEnumerable<SpringFile> GetPsiFiles(IPsiSourceFile sourceFile)

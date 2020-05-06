@@ -150,7 +150,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
         public DeclaredElementType GetElementType()
         {
-            return null;
+            return CLRDeclaredElementType.FIELD;
         }
 
         public XmlNode GetXMLDoc(bool inherit)
@@ -242,7 +242,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
         // clr stuff
         public override ISymbolTable GetReferenceSymbolTable(bool useReferenceName)
         {
-            return null;
+            throw new NotImplementedException();
         }
 
         public override TreeTextRange GetTreeTextRange()
