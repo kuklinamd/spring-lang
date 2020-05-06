@@ -8,6 +8,7 @@ using JetBrains.DocumentModel;
 using JetBrains.Lifetimes;
 using JetBrains.ProjectModel;
 using JetBrains.ReSharper.Daemon.CSharp.Errors;
+using JetBrains.ReSharper.Daemon.Impl;
 using JetBrains.ReSharper.Feature.Services.Daemon;
 using JetBrains.ReSharper.Feature.Services.SelectEmbracingConstruct;
 using JetBrains.ReSharper.I18n.Services.Daemon;
@@ -17,6 +18,7 @@ using JetBrains.ReSharper.Psi.ExtensionsAPI;
 using JetBrains.ReSharper.Psi.ExtensionsAPI.Tree;
 using JetBrains.ReSharper.Psi.Files;
 using JetBrains.ReSharper.Psi.Parsing;
+using JetBrains.ReSharper.Psi.Resolve;
 using JetBrains.ReSharper.Psi.Tree;
 using JetBrains.ReSharper.Psi.TreeBuilder;
 using JetBrains.Text;
@@ -39,23 +41,25 @@ namespace JetBrains.ReSharper.Plugins.Spring
             {
                 var builder = new PsiBuilder(myLexer, SpringFileNodeType.Instance, new TokenFactory(), def.Lifetime);
                 var fileMark = builder.Mark();
-                
+
+                /*
                 StringBuilder b = new StringBuilder();
                 foreach (var tok in myLexer.Tokens())
                 {
                     b.Append(tok + " ");
                 }
                 builder.Error("F: " + b);
+                */
 
                 ParseDefines(builder);
 
                 builder.Done(fileMark, SpringFileNodeType.Instance, null);
                 var file = (IFile) builder.BuildTree();
-                
+
                 var sb = new StringBuilder();
                 DebugUtil.DumpPsi(new StringWriter(sb), file);
                 sb.ToString();
-                
+
                 return file;
             }
         }
@@ -69,69 +73,59 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 if (tt == SpringTokenType.LPAREN)
                 {
                     var start = builder.Mark();
-                    builder.AdvanceLexer();
-                    SkipWhitespace(builder);
+                    AdvanceSkippingWhitespace(builder);
                     var startBlock = builder.GetTokenType();
                     if (startBlock == SpringTokenType.DEFINE)
                     {
-                        builder.AdvanceLexer();
-                        SkipWhitespace(builder);
-                        ParseIdent(builder);
+                        AdvanceSkippingWhitespace(builder);
+                        ParseIdentDecl(builder);
                         SkipWhitespace(builder);
                         ParseExpr(builder);
                     }
                     else
                     {
-                        builder.Error("Expected definition");
+                        builder.Error("Expected definition!");
                     }
 
                     SkipWhitespace(builder);
                     if (builder.GetTokenType() == SpringTokenType.RPAREN)
                         builder.AdvanceLexer();
                     else
-                        builder.Error("Expected ')'");
+                        builder.Error("Expected ')' to close definition!");
 
                     builder.Done(start, SpringCompositeNodeType.DEFINE, null);
                 }
                 else
                 {
-                    builder.Error("Expected '('");
+                    builder.Error("Expected '(', but got: " + builder.GetTokenType().TokenRepresentation);
                     builder.AdvanceLexer();
                 }
+
                 SkipWhitespace(builder);
             }
         }
 
-        private void ParseIdent(PsiBuilder builder)
+        private static void ParseIdent(PsiBuilder builder)
+        {
+            ParseIdentCommon(builder, SpringCompositeNodeType.IDENT);
+        }
+
+        private static void ParseIdentDecl(PsiBuilder builder)
+        {
+            ParseIdentCommon(builder, SpringCompositeNodeType.IDENT_DECL);
+        }
+
+        private static void ParseIdentCommon(PsiBuilder builder, SpringCompositeNodeType type)
         {
             var start = builder.Mark();
             var defineName = builder.GetTokenType();
-            if (defineName != SpringTokenType.IDENT)
-                builder.Error("Expected definition name");
-            else
+            if (defineName == SpringTokenType.IDENT)
                 builder.AdvanceLexer();
-            builder.Done(start, SpringCompositeNodeType.IDENT, null);
-        }
+            else
+                builder.Error("Expected identifier!");
 
-        private void ParseBlock(PsiBuilder builder)
-        {
-            var tt = builder.GetTokenType();
-            if (tt == SpringTokenType.LPAREN)
-            {
-                var start = builder.Mark();
-                
-                /* code here */
-                
-                if (builder.GetTokenType() != SpringTokenType.RPAREN)
-                    builder.Error("Expected ')'");
-                else
-                    builder.AdvanceLexer();
 
-                builder.Done(start, SpringCompositeNodeType.DEFINE, null);
-            }
-            else if (tt == SpringTokenType.RPAREN)
-                return;
-            else builder.AdvanceLexer();
+            builder.Done(start, type, null);
         }
 
         private void ParseExpr(PsiBuilder builder)
@@ -144,66 +138,111 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 builder.AdvanceLexer();
                 builder.Done(mark, SpringCompositeNodeType.LIT, null);
             }
+            else if (expr == SpringTokenType.IDENT)
+            {
+                var mark = builder.Mark();
+                builder.AdvanceLexer();
+                builder.Done(mark, SpringCompositeNodeType.IDENT, null);
+            }
+            else if (expr == SpringTokenType.LPAREN)
+            {
+                ParseBlock(builder);
+            }
             else
             {
                 builder.Error("Expected an expression!");
             }
+
             builder.Done(markExpr, SpringCompositeNodeType.EXPR, null);
-
-            /*
-            if (tt == SpringTokenType.LPAREN)
-            {
-                var start = builder.Mark();
-                builder.AdvanceLexer();
-                var startBlock = builder.GetTokenType();
-                if (startBlock == SpringTokenType.LAMBDA)
-                {
-                    ParseLambda(builder);
-                }
-                else 
-                {
-                    builder.Error("Expected lambda");
-                }
-
-                if (builder.GetTokenType() != SpringTokenType.RPAREN)
-                    builder.Error("Expected ')'");
-                else
-                    builder.AdvanceLexer();
-
-                builder.Done(start, SpringCompositeNodeType.BLOCK, null);
-            }
-            else if (tt == SpringTokenType.RPAREN)
-                return;
-            else builder.AdvanceLexer();
-            */
         }
 
-        /*
-        private void ParseLambda(PsiBuilder builder)
+        // Call when you know that the current mark is LPAREN.
+        private void ParseBlock(PsiBuilder builder)
         {
+            var mark = builder.Mark();
+            AdvanceSkippingWhitespace(builder);
             var tt = builder.GetTokenType();
-            if (tt == SpringTokenType.LPAREN)
+            if (tt == SpringTokenType.LAMBDA)
             {
-                var start = builder.Mark();
-                ParseParamList(builder);
-                if (builder.GetTokenType() != SpringTokenType.RPAREN)
-                    builder.Error("Expected ')'");
-                else
-                    builder.AdvanceLexer();
+                var markLambda = builder.Mark();
+                AdvanceSkippingWhitespace(builder);
+                ParseList(builder, ParseIdentDecl);
+                SkipWhitespace(builder);
+                ParseExpr(builder);
 
-                builder.Done(start, SpringCompositeNodeType.PARAM_LIST, null);
+                builder.Done(markLambda, SpringCompositeNodeType.LAMBDA, null);
+            }
+            else if (tt == SpringTokenType.IF)
+            {
+                var markIf = builder.Mark();
+                AdvanceSkippingWhitespace(builder);
+                // Cond
+                ParseExpr(builder);
+                // Then 
+                ParseExpr(builder);
+                // Else
+                ParseExpr(builder);
+
+                builder.Done(markIf, SpringCompositeNodeType.IF, null);
             }
             else
             {
-                ParseExpr(builder);   
+                ParseSpaceSeparatedList(builder, ParseExpr);
+                SkipWhitespace(builder);
+            }
+
+            if (builder.GetTokenType() == SpringTokenType.RPAREN)
+            {
+                AdvanceSkippingWhitespace(builder);
+            }
+            else
+            {
+                builder.Error("Expected ')' to close block!");
+            }
+
+            builder.Done(mark, SpringCompositeNodeType.BLOCK, null);
+        }
+
+        // Left mark after ')'
+        private void ParseList(PsiBuilder builder, Action<PsiBuilder> elementParser)
+        {
+            if (builder.GetTokenType() == SpringTokenType.LPAREN)
+            {
+                AdvanceSkippingWhitespace(builder);
+                ParseSpaceSeparatedList(builder, elementParser);
+
+                if (builder.GetTokenType() == SpringTokenType.RPAREN)
+                    AdvanceSkippingWhitespace(builder);
+            }
+            else
+            {
+                builder.Error("Expected list!");
             }
         }
 
-        private void ParseParamList(PsiBuilder builder)
+        // Left mark on ')'
+        private void ParseSpaceSeparatedList(PsiBuilder builder, Action<PsiBuilder> elementParser)
         {
-            
+            var mark = builder.Mark();
+            while (builder.GetTokenType() != SpringTokenType.RPAREN && !builder.Eof())
+            {
+                elementParser(builder);
+                SkipWhitespace(builder);
+            }
+
+            if (builder.GetTokenType() != SpringTokenType.RPAREN)
+            {
+                builder.Error("Expect ')' in list!");
+            }
+
+            builder.Done(mark, SpringCompositeNodeType.LIST, null);
         }
-        */
+
+        private void AdvanceSkippingWhitespace(PsiBuilder builder)
+        {
+            builder.AdvanceLexer();
+            SkipWhitespace(builder);
+        }
 
         private static void SkipWhitespace(PsiBuilder builder)
         {
@@ -245,6 +284,19 @@ namespace JetBrains.ReSharper.Plugins.Spring
                         highlightings.Add(new HighlightingInfo(range,
                             new CSharpSyntaxError(error.ErrorDescription, range)));
                     }
+                    else if (treeNode is SpringIdent refer)
+                    {
+                        var refs = refer.GetFirstClassReferences();
+                        foreach (var reff in refs)
+                        {
+                            if (reff.Resolve().Info.ResolveErrorType != ResolveErrorType.OK)
+                            {
+                                var rangeR = reff.GetDocumentRange();
+                                highlightings.Add(new HighlightingInfo(rangeR,
+                                    new CSharpSyntaxError("Symbol cannot be resolved", rangeR)));
+                            }
+                        }
+                    }
                 }
 
                 var result = new DaemonStageResult(highlightings);
@@ -252,6 +304,18 @@ namespace JetBrains.ReSharper.Plugins.Spring
             }
 
             public IDaemonProcess DaemonProcess { get; }
+
+            [StaticSeverityHighlighting(Severity.ERROR, "CSharpErrors", OverlapResolve = OverlapResolveKind.WARNING)]
+            public class CSharpSyntaxErrorMod : SyntaxErrorBase, IHighlightingWithNavigationOffset, IHighlighting
+            {
+                public int NavigationOffset { get; }
+
+                public CSharpSyntaxErrorMod(string toolTip, DocumentRange range, int navigationOffset = 0)
+                    : base(toolTip, range)
+                {
+                    this.NavigationOffset = navigationOffset;
+                }
+            }
         }
 
         protected override IEnumerable<SpringFile> GetPsiFiles(IPsiSourceFile sourceFile)

@@ -1,7 +1,11 @@
+using JetBrains.DocumentModel;
 using JetBrains.ProjectModel;
+using JetBrains.ReSharper.Feature.Services.SelectEmbracingConstruct;
 using JetBrains.ReSharper.Psi;
+using JetBrains.ReSharper.Psi.Files;
 using JetBrains.ReSharper.Psi.Impl;
 using JetBrains.ReSharper.Psi.Parsing;
+using JetBrains.ReSharper.Psi.Tree;
 using JetBrains.Text;
 using JetBrains.UI.Icons;
 

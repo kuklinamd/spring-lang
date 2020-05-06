@@ -34,12 +34,12 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
         protected override bool IsNumber(TokenNodeType tokenType)
         {
-            return base.IsNumber(tokenType);
+            return base.IsNumber(tokenType) || tokenType.IsConstantLiteral;
         }
 
         protected override bool IsKeyword(TokenNodeType tokenType)
         {
-            return base.IsKeyword(tokenType) || tokenType.IsConstantLiteral;
+            return base.IsKeyword(tokenType);
         }
     }
 }

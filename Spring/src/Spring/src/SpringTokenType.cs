@@ -32,8 +32,11 @@ namespace JetBrains.ReSharper.Plugins.Spring
             DEFINE, LAMBDA, LET, COND, ELSE, IF
         };
         
+        private string _tokenName;
+        
         public SpringTokenType(string s, int index) : base(s, index)
         {
+            _tokenName = s;
         }
 
         public override LeafElementBase Create(IBuffer buffer, TreeOffset startOffset, TreeOffset endOffset)
@@ -50,10 +53,9 @@ namespace JetBrains.ReSharper.Plugins.Spring
         public override bool IsIdentifier => this == IDENT;
 
         public override bool IsKeyword => _keywordTokenTypes.Contains(this);
-        
-        public override string TokenRepresentation { get; }
-        
-        
+        public override string TokenRepresentation => _tokenName;
+
+
         public class SpringLeafToken : LeafElementBase, ITokenNode
         {
             private readonly string _text;
