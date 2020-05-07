@@ -34,6 +34,8 @@ namespace JetBrains.ReSharper.Plugins.Spring
         public static readonly SpringCompositeNodeType LIST = new SpringCompositeNodeType("LIST", 9);
         public static readonly SpringCompositeNodeType EXPR = new SpringCompositeNodeType("EXPR", 10);
         public static readonly SpringCompositeNodeType IDENT_DECL = new SpringCompositeNodeType("IDENT_DECL", 11);
+        public static readonly SpringCompositeNodeType LET = new SpringCompositeNodeType("LET", 12);
+        public static readonly SpringCompositeNodeType BIND = new SpringCompositeNodeType("BIND", 13);
 
         public override CompositeElement Create()
         {
@@ -59,6 +61,10 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 return new SpringQuote();
             if (this == IDENT_DECL)
                 return new SpringIdentDecl();
+            if (this == LET)
+                return new SpringLet();
+            if (this == BIND)
+                return new SpringBindingExpr();
             
             throw new InvalidOperationException();
         }

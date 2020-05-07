@@ -33,11 +33,12 @@ DIGIT=[0-9]
 NEWLINE=((\r\n)|\n)
 NONNEWLINE_WHITE_SPACE_CHAR=[\ \t\b\012]
 WHITE_SPACE_CHAR=({NEWLINE}|{NONNEWLINE_WHITE_SPACE_CHAR})
-START_SYMBOL=({ALPHA}|"+"|"-"|"*"|"^"|"&"|"%"|"$"|"?"|"=")
+START_SYMBOL=({ALPHA}|"+"|"-"|"*"|"^"|"&"|"%"|"$"|"?"|"="|"#")
 IDENT=({START_SYMBOL}({DIGIT}|{START_SYMBOL})*)
+COMMENT=(";"[^\n]*\n)
 
 %% 
-<YYINITIAL> "#" { return currentTokenType = SpringTokenType.COMMENT; }
+<YYINITIAL> {COMMENT} { return currentTokenType = SpringTokenType.COMMENT; }
 <YYINITIAL> "(" { return currentTokenType = SpringTokenType.LPAREN; }
 <YYINITIAL> ")" { return currentTokenType = SpringTokenType.RPAREN; }
 <YYINITIAL> define { return currentTokenType = SpringTokenType.DEFINE; }

@@ -20,7 +20,6 @@ namespace JetBrains.ReSharper.Plugins.Spring
         public static SpringTokenType ELSE = new SpringTokenType("ELSE", 6);
         public static SpringTokenType RPAREN= new SpringTokenType("RPAREN", 7);
         public static SpringTokenType LPAREN = new SpringTokenType("LPAREN", 8);
-        public static SpringTokenType OP = new SpringTokenType("OP", 9);
         public static SpringTokenType IF = new SpringTokenType("IF", 10);
         public static SpringTokenType QUOTE = new SpringTokenType("QUOTE", 11);
         public static SpringTokenType WS = new SpringTokenType("WS", 12);

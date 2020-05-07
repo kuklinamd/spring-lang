@@ -12,8 +12,35 @@ using JetBrains.Util.DataStructures;
 
 namespace JetBrains.ReSharper.Plugins.Spring
 {
+    public class Scope
+    {
+        public readonly Scope ParentScope;
+        private readonly ISet<IDeclaredElement> _declarations = new HashSet<IDeclaredElement>();
+
+        public Scope(Scope parentScope = null)
+        {
+           ParentScope = parentScope;
+        }
+
+        public IDeclaredElement GetOrNull(string ident)
+        {
+            var decl = _declarations.FirstOrDefault(d => d.ShortName == ident);
+            if (decl != null)
+            {
+                return decl;
+            }
+
+            return ParentScope?.GetOrNull(ident);
+        }
+
+        public void Add(IDeclaredElement ident)
+        {
+            _declarations.Add(ident);
+        }
+    }
     public class SpringFile : FileElementBase
     {
+        public Scope Scope = new Scope();
         public override NodeType NodeType => SpringFileNodeType.Instance;
 
         public override PsiLanguageType Language => SpringLanguage.Instance;
@@ -28,6 +55,8 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
     public class SpringDefine : CompositeElement
     {
+        // Filthy Hack
+        public Scope ParentScope = new Scope(); 
         public override NodeType NodeType => SpringCompositeNodeType.DEFINE;
 
         public override PsiLanguageType Language => SpringLanguage.Instance;
@@ -35,6 +64,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
     public class SpringLambda : CompositeElement
     {
+        public Scope Scope = new Scope(); 
         public override NodeType NodeType => SpringCompositeNodeType.LAMBDA;
 
         public override PsiLanguageType Language => SpringLanguage.Instance;
@@ -82,6 +112,22 @@ namespace JetBrains.ReSharper.Plugins.Spring
         public override NodeType NodeType => SpringCompositeNodeType.QUOTE;
 
         public override PsiLanguageType Language => SpringLanguage.Instance;
+    }
+    
+    public class SpringLet : CompositeElement
+    {
+        public Scope Scope = new Scope();
+        public override NodeType NodeType => SpringCompositeNodeType.LET;
+
+        public override PsiLanguageType Language => SpringLanguage.Instance;
+    }
+
+    public class SpringBindingExpr : CompositeElement
+    {
+        public override NodeType NodeType => SpringCompositeNodeType.BIND;
+
+        public override PsiLanguageType Language => SpringLanguage.Instance;
+        
     }
 
     public class SpringIdentDecl : CompositeElement, IDeclaration
@@ -165,7 +211,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
         public DeclaredElementType GetElementType()
         {
             // why not?
-            return CLRDeclaredElementType.FIELD;
+            return CLRDeclaredElementType.CONSTANT;
         }
 
         public XmlNode GetXMLDoc(bool inherit)
@@ -199,12 +245,13 @@ namespace JetBrains.ReSharper.Plugins.Spring
         }
 
         public string ShortName => _springIdentDecl.DeclaredName;
-        public bool CaseSensitiveName => false;
+        public bool CaseSensitiveName => true;
         public PsiLanguageType PresentationLanguage => SpringLanguage.Instance;
     }
 
     public class SpringIdent : CompositeElement
     {
+        public Scope ParentScope = new Scope();
         public TreeTextRange IdentRange
         {
             get
@@ -242,25 +289,13 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
         public override ResolveResultWithInfo ResolveWithoutCache()
         {
-            var parent = _ident.Parent;
-
-            while (parent != null)
+            var declared =  _ident.ParentScope.GetOrNull(GetName());
+            if (declared != null)
             {
-                foreach (var child in parent.Descendants())
-                {
-                    if (child is SpringIdentDecl decl)
-                    {
-                        if (decl.DeclaredName == GetName())
-                        {
-                            return new ResolveResultWithInfo(new SimpleResolveResult(decl.DeclaredElement),
-                                ResolveErrorType.OK);
-                        }
-
-                    }
-                }
-                parent = parent.Parent;
+                return new ResolveResultWithInfo(new SimpleResolveResult(declared),
+                    ResolveErrorType.OK);
             }
-            
+
             return ResolveResultWithInfo.Unresolved;
         }
 

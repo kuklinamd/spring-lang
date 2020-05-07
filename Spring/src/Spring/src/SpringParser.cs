@@ -2,18 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using ICSharpCode.NRefactory.CSharp;
 using JetBrains.Application.Settings;
 using JetBrains.DocumentModel;
 using JetBrains.Lifetimes;
 using JetBrains.ProjectModel;
 using JetBrains.ReSharper.Daemon.CSharp.Errors;
-using JetBrains.ReSharper.Daemon.Impl;
 using JetBrains.ReSharper.Feature.Services.Daemon;
 using JetBrains.ReSharper.Feature.Services.SelectEmbracingConstruct;
 using JetBrains.ReSharper.I18n.Services.Daemon;
 using JetBrains.ReSharper.Psi;
-using JetBrains.ReSharper.Psi.CSharp.Parsing;
 using JetBrains.ReSharper.Psi.ExtensionsAPI;
 using JetBrains.ReSharper.Psi.ExtensionsAPI.Tree;
 using JetBrains.ReSharper.Psi.Files;
@@ -21,12 +18,64 @@ using JetBrains.ReSharper.Psi.Parsing;
 using JetBrains.ReSharper.Psi.Resolve;
 using JetBrains.ReSharper.Psi.Tree;
 using JetBrains.ReSharper.Psi.TreeBuilder;
-using JetBrains.ReSharperAutomationTools.CommandLine.Common.Console.Util;
 using JetBrains.Text;
-using JetBrains.Util.Console;
 
 namespace JetBrains.ReSharper.Plugins.Spring
 {
+    class SprintTreeScopeUtl
+    {
+        public static void InitScopes(ITreeNode node)
+        {
+            if (node is SpringFile file)
+            {
+                var parentScope = file.Scope;
+                foreach (var child in file.Children())
+                {
+                    AddScope(child, parentScope);
+                }
+            }
+        }
+
+        private static void AddScope(ITreeNode node, Scope parentScope)
+        {
+                var scope = parentScope;
+                if (node is SpringDefine define)
+                {
+                    define.ParentScope = parentScope;
+                }
+                else if (node is SpringLambda lambda)
+                {
+                    lambda.Scope = new Scope(parentScope);
+                    scope = lambda.Scope;
+                }
+                else if (node is SpringLet let)
+                {
+                    let.Scope = new Scope(parentScope);
+                    scope = let.Scope;
+                }
+                else if (node is SpringIdent ident)
+                {
+                    ident.ParentScope = scope;
+                }
+                else if (node is SpringIdentDecl decl)
+                {
+                    scope.Add(decl.DeclaredElement);
+                }
+                else if (node is SpringBindingExpr)
+                {
+                    // Let node passes to Bind (<ident> <expr>)
+                    // newly created scope, but <expr> have to have
+                    // it's parent scope.
+                    scope = scope.ParentScope;
+                }
+
+                foreach (var child in node.Children())
+                {
+                    AddScope(child, scope);
+                }
+        }
+    }
+
     internal class SpringParser : IParser
     {
         private readonly ILexer myLexer;
@@ -43,24 +92,25 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 var builder = new PsiBuilder(myLexer, SpringFileNodeType.Instance, new TokenFactory(), def.Lifetime);
                 var fileMark = builder.Mark();
 
-                /*
                 StringBuilder b = new StringBuilder();
                 foreach (var tok in myLexer.Tokens())
                 {
                     b.Append(tok + " ");
                 }
-                builder.Error("F: " + b);
-                */
+
+                b.ToString();
 
                 ParseDefines(builder);
 
                 builder.Done(fileMark, SpringFileNodeType.Instance, null);
                 var file = (IFile) builder.BuildTree();
-                
+
+                SprintTreeScopeUtl.InitScopes(file);
+
                 var sb = new StringBuilder();
                 DebugUtil.DumpPsi(new StringWriter(sb), file);
                 sb.ToString();
-                
+
                 return file;
             }
         }
@@ -87,7 +137,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
                     {
                         builder.Error("Expected definition!");
                     }
-                    
+
                     /*
                     if (builder.GetTokenType() == SpringTokenType.RPAREN)
                         builder.AdvanceLexer();
@@ -96,7 +146,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
                     builder.Done(start, SpringCompositeNodeType.DEFINE, null);
                     */
-                    
+
                     SkipWhitespace(builder);
                     if (builder.GetTokenType() == SpringTokenType.RPAREN)
                     {
@@ -119,17 +169,17 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 SkipWhitespace(builder);
             }
         }
-        
+
         private static bool ParseIdentDecl(PsiBuilder builder)
         {
             return ParseIdentCommon(builder, SpringCompositeNodeType.IDENT_DECL);
         }
-        
+
         private static bool ParseIdent(PsiBuilder builder)
         {
             return ParseIdentCommon(builder, SpringCompositeNodeType.IDENT);
         }
-        
+
 
         private static bool ParseIdentCommon(PsiBuilder builder, SpringCompositeNodeType type)
         {
@@ -168,6 +218,13 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 var mark = builder.Mark();
                 builder.AdvanceLexer();
                 builder.Done(mark, SpringCompositeNodeType.IDENT, null);
+            }
+            else if (expr == SpringTokenType.QUOTE)
+            {
+                var mark = builder.Mark();
+                builder.AdvanceLexer();
+                lexerAdvanced = ParseExpr(builder);
+                builder.Done(mark, SpringCompositeNodeType.QUOTE, null);
             }
             else if (expr == SpringTokenType.LPAREN)
             {
@@ -210,15 +267,32 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 SkipWhitespace(builder);
                 // Else
                 ParseExpr(builder);
-                SkipWhitespace(builder);
 
                 builder.Done(markIf, SpringCompositeNodeType.IF, null);
+            }
+            else if (tt == SpringTokenType.COND)
+            {
+                var markCond = builder.Mark();
+                AdvanceSkippingWhitespace(builder);
+                ParseSpaceSeparatedList(builder, ParseCondClause);
+                builder.Done(markCond, SpringCompositeNodeType.COND, null);
+            }
+            else if (tt == SpringTokenType.LET)
+            {
+                var markLet = builder.Mark();
+                AdvanceSkippingWhitespace(builder);
+                ParseList(builder, ParseLetBinding);
+                SkipWhitespace(builder);
+                ParseExpr(builder);
+
+                builder.Done(markLet, SpringCompositeNodeType.LET, null);
             }
             else
             {
                 ParseSpaceSeparatedList(builder, ParseExpr);
-                SkipWhitespace(builder);
             }
+
+            SkipWhitespace(builder);
 
             if (builder.GetTokenType() == SpringTokenType.RPAREN)
             {
@@ -231,14 +305,88 @@ namespace JetBrains.ReSharper.Plugins.Spring
             }
         }
 
-        // Left mark after ')'
+        private bool ParseLetBinding(PsiBuilder builder)
+        {
+            bool lexerAdvanced = false;
+            var mark = builder.Mark();
+            if (builder.GetTokenType() == SpringTokenType.LPAREN)
+            {
+                AdvanceSkippingWhitespace(builder);
+                var identParsed = ParseIdentDecl(builder);
+                SkipWhitespace(builder);
+
+                var markExpr = builder.Mark();
+                var exprParsed = ParseExpr(builder);
+                SkipWhitespace(builder); 
+                builder.Done(markExpr, SpringCompositeNodeType.BIND, null);
+                
+                lexerAdvanced = identParsed || exprParsed;
+
+                if (builder.GetTokenType() == SpringTokenType.RPAREN)
+                {
+                    AdvanceSkippingWhitespace(builder);
+                    builder.Drop(mark);
+                }
+                else
+                {
+                    builder.Error(mark, "Expect ')' to close binding");
+                }
+            }
+            else
+            {
+                builder.Error(mark, "Expected binding!");
+            }
+
+            return lexerAdvanced;
+        }
+
+        private bool ParseCondClause(PsiBuilder builder)
+        {
+            bool lexerAdvanced = false;
+            if (builder.GetTokenType() == SpringTokenType.LPAREN)
+            {
+                bool leftExprParsed;
+                AdvanceSkippingWhitespace(builder);
+                if (builder.GetTokenType() == SpringTokenType.ELSE)
+                {
+                    AdvanceSkippingWhitespace(builder);
+                    leftExprParsed = true;
+                }
+                else
+                {
+                    leftExprParsed = ParseExpr(builder);
+                }
+
+                SkipWhitespace(builder);
+                var rightExprParsed = ParseExpr(builder);
+                SkipWhitespace(builder);
+                lexerAdvanced = leftExprParsed && rightExprParsed;
+
+                if (builder.GetTokenType() == SpringTokenType.RPAREN)
+                {
+                    AdvanceSkippingWhitespace(builder);
+                }
+                else
+                {
+                    builder.Error("Expect ')' in list!");
+                }
+            }
+            else
+            {
+                builder.Error("Expected cond clause!");
+            }
+
+            return lexerAdvanced;
+        }
+
+        // Leaves mark after ')'
         private void ParseList(PsiBuilder builder, Predicate<PsiBuilder> elementParser)
         {
             if (builder.GetTokenType() == SpringTokenType.LPAREN)
             {
                 AdvanceSkippingWhitespace(builder);
                 ParseSpaceSeparatedList(builder, elementParser);
-
+                SkipWhitespace(builder);
                 if (builder.GetTokenType() == SpringTokenType.RPAREN)
                     AdvanceSkippingWhitespace(builder);
             }
@@ -254,10 +402,11 @@ namespace JetBrains.ReSharper.Plugins.Spring
             var mark = builder.Mark();
             while (builder.GetTokenType() != SpringTokenType.RPAREN && !builder.Eof())
             {
-                if (!elementParser(builder))
+                if (!elementParser(builder) && !builder.Eof())
                 {
                     builder.AdvanceLexer();
                 }
+
                 SkipWhitespace(builder);
             }
 
@@ -277,7 +426,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
         private static void SkipWhitespace(PsiBuilder builder)
         {
-            while (builder.GetTokenType() == SpringTokenType.WS)
+            while (builder.GetTokenType() == SpringTokenType.WS || builder.GetTokenType() == SpringTokenType.COMMENT)
             {
                 builder.AdvanceLexer();
             }
@@ -309,24 +458,28 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 var highlightings = new List<HighlightingInfo>();
                 foreach (var treeNode in myFile.Descendants())
                 {
-                    if (treeNode is PsiBuilderErrorElement error)
+                    switch (treeNode)
                     {
-                        var range = error.GetDocumentRange();
-                        highlightings.Add(new HighlightingInfo(range,
-                            new CSharpSyntaxError(error.ErrorDescription, range)));
-                    }
-                    else if (treeNode is SpringIdent refer)
-                    {
-                        var refs = refer.GetFirstClassReferences();
-                        foreach (var reff in refs)
+                        case PsiBuilderErrorElement error:
                         {
-                            if (reff.Resolve().Info.ResolveErrorType != ResolveErrorType.OK)
+                            var range = error.GetDocumentRange();
+                            highlightings.Add(new HighlightingInfo(range,
+                                new CSharpSyntaxError(error.ErrorDescription, range)));
+                            break;
+                        }
+                        case SpringIdent refer:
+                        {
+                            var refs = refer.GetFirstClassReferences();
+                            foreach (var reff in refs)
                             {
+                                if (reff.Resolve().Info.ResolveErrorType == ResolveErrorType.OK) continue;
                                 var rangeR = reff.GetDocumentRange();
                                 if (!rangeR.IsEmpty)
                                     highlightings.Add(new HighlightingInfo(rangeR,
-                                        new CSharpSyntaxError("Cannot resolve a symbol", rangeR))); 
+                                        new CSharpSyntaxError("Cannot resolve a symbol", rangeR)));
                             }
+
+                            break;
                         }
                     }
                 }
