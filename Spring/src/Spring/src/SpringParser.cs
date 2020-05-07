@@ -346,6 +346,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
             if (builder.GetTokenType() == SpringTokenType.LPAREN)
             {
                 bool leftExprParsed;
+                var mark = builder.Mark();
                 AdvanceSkippingWhitespace(builder);
                 if (builder.GetTokenType() == SpringTokenType.ELSE)
                 {
@@ -360,15 +361,16 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 SkipWhitespace(builder);
                 var rightExprParsed = ParseExpr(builder);
                 SkipWhitespace(builder);
-                lexerAdvanced = leftExprParsed && rightExprParsed;
+                lexerAdvanced = leftExprParsed || rightExprParsed;
 
                 if (builder.GetTokenType() == SpringTokenType.RPAREN)
                 {
                     AdvanceSkippingWhitespace(builder);
+                    builder.Drop(mark);
                 }
                 else
                 {
-                    builder.Error("Expect ')' in list!");
+                    builder.Error(mark, "Expect ')' in list!");
                 }
             }
             else
