@@ -1,0 +1,38 @@
+(define test1
+  (let
+     ((first (second2 0)) 
+      (second '(1 2 3 (lambda (b second c d) (c second d))))))
+     (second first)
+  )
+)
+
+(define test2
+  (if 0 test1 (second2 0 1))
+)
+
+(define test3
+  (cond 
+    (0 1)
+    ('(1 2 3) test2) 
+    (else second2)
+  )
+)
+
+(define second2
+  (lambda (fst snd)
+    (lambda (fst2 snd2)
+      (fst snd fst2 snd2)
+    )
+  )
+)
+
+; Должен падать резолв
+(define fail
+  (let
+     ((first notExist) 
+      ; first в другом скоупе
+      (second '(1 2 3 (lambda (b second c d) (c first d))))))
+     (second first)
+  )
+)
+
