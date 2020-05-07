@@ -110,11 +110,6 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 }
                 else
                 {
-                    /*
-                    builder.Error("Expected '(', but got: " + builder.GetTokenType().TokenRepresentation);
-                    builder.AdvanceLexer();
-                    */
-                    
                     var tokenType = builder.GetTokenType();
                     var mark = builder.Mark();
                     builder.AdvanceLexer();
@@ -124,16 +119,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 SkipWhitespace(builder);
             }
         }
-
-        /*
-        private static bool ParseIdentDecl(PsiBuilder builder)
-        {
-            var start = builder.Mark();
-            var result = ParseIdent(builder);
-            builder.Done(start, SpringCompositeNodeType.IDENT_DECL, null);
-            return result;
-        }
-        */
+        
         private static bool ParseIdentDecl(PsiBuilder builder)
         {
             return ParseIdentCommon(builder, SpringCompositeNodeType.IDENT_DECL);
@@ -154,12 +140,13 @@ namespace JetBrains.ReSharper.Plugins.Spring
             {
                 lexerAdvanced = true;
                 builder.AdvanceLexer();
+                builder.Done(start, type, null);
             }
             else
-                builder.Error("Expected identifier!");
+            {
+                builder.Error(start, "Expected identifier!");
+            }
 
-            builder.Done(start, type, null);
-            
             return lexerAdvanced;
         }
 
@@ -217,10 +204,13 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 AdvanceSkippingWhitespace(builder);
                 // Cond
                 ParseExpr(builder);
+                SkipWhitespace(builder);
                 // Then 
                 ParseExpr(builder);
+                SkipWhitespace(builder);
                 // Else
                 ParseExpr(builder);
+                SkipWhitespace(builder);
 
                 builder.Done(markIf, SpringCompositeNodeType.IF, null);
             }
@@ -233,13 +223,12 @@ namespace JetBrains.ReSharper.Plugins.Spring
             if (builder.GetTokenType() == SpringTokenType.RPAREN)
             {
                 AdvanceSkippingWhitespace(builder);
+                builder.Done(mark, SpringCompositeNodeType.BLOCK, null);
             }
             else
             {
-                builder.Error("Expected ')' to close block!");
+                builder.Error(mark, "Expected ')' to close block!");
             }
-
-            builder.Done(mark, SpringCompositeNodeType.BLOCK, null);
         }
 
         // Left mark after ')'
