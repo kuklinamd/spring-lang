@@ -242,7 +242,6 @@ namespace JetBrains.ReSharper.Plugins.Spring
 
         public override ResolveResultWithInfo ResolveWithoutCache()
         {
-            /*
             var parent = _ident.Parent;
 
             while (parent != null)
@@ -261,25 +260,7 @@ namespace JetBrains.ReSharper.Plugins.Spring
                 }
                 parent = parent.Parent;
             }
-            */
-                
-            var file = _ident.GetContainingFile();
-            if (file == null)
-            {
-                return ResolveResultWithInfo.Unresolved;
-            }
-
-            foreach (var descendant in file.Descendants())
-            {
-                if (descendant is SpringIdentDecl declaration)
-                {
-                    if (declaration.DeclaredName == GetName())
-                    {
-                        return new ResolveResultWithInfo(new SimpleResolveResult(declaration.DeclaredElement), ResolveErrorType.OK);
-                    }
-                }
-            }
-
+            
             return ResolveResultWithInfo.Unresolved;
         }
 
